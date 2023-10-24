@@ -4,3 +4,6 @@
 [submodule "externals/magic_enum"]
 	path = externals/magic_enum
 	url = ghmj2:Neargye/magic_enum.git
+[submodule "externals/async-sockets-cpp"]
+	path = externals/async-sockets-cpp
+	url = ghmj2:eminfedar/async-sockets-cpp.git
