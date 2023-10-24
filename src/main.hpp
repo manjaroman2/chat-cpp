@@ -1,10 +1,8 @@
 #include "api.hpp"
 #include "tcpsocket.hpp"
 #include <mutex>
-#include <functional>
+// #include <functional>
 #include <stdint.h>
-#include <exception>
-#include <stdexcept>
 
 namespace Api
 {
@@ -25,12 +23,18 @@ namespace Api
         char *preMessageBufferFreeSpace = preMessageBuffer.begin();
         std::mutex preMessageBufferLock;
 
-        Connection(std::string ip, int port)
+        Connection(std::string ip, int port) // Constructor overload??
         {
-            // preMessageBuffer.begin()
-            this->ip = ip;
+            this->ip = ip.c_str();
             this->port = port;
         }
+        Connection(TCPSocket<> *newSocket)
+        {
+            this->socket = newSocket;
+            this->ip = socket->remoteAddress().c_str();
+            this->port = socket->remotePort();
+        }
+
         ~Connection()
         {
             deletedLock.lock();

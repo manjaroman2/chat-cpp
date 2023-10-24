@@ -171,7 +171,8 @@ namespace Api
                 connectionsLock.unlock();
                 ip = strtok(messageBuffer, ":");
                 port = atoi(strtok(NULL, ":"));
-                connection = connection_create(ip, port);
+                connection = new Connection(ip, port);
+                connnection_register(connection);
                 connection->createSocket();
 
                 // Send confirmation of CONNECT to client
@@ -268,18 +269,18 @@ namespace Api
     {
         int listen_port = 8888;
         if (argc > 1)
+        {
             listen_port = atoi(argv[1]);
-
+        }
         // Initialize server socket..
         TCPServer<> tcpServer;
 
-        // When a new client connected:
-        tcpServer.onNewConnection = [](TCPSocket<> *newClient)
+        tcpServer.onNewConnection = [](TCPSocket<> *newSocket)
         {
             Connection *connection = nullptr;
             if (nextFreeConnection < MAX_CONNECTIONS)
             {
-                connection = new Connection(newClient->remoteAddress().c_str(), newClient->remotePort());
+                connection = new Connection(newSocket);
                 connection->idLock.lock();
                 connectionsLock.lock();
                 connection->id = nextFreeConnection;
@@ -289,18 +290,17 @@ namespace Api
             }
             else
             {
-                newClient->Close();
+                newSocket->Close();
                 return;
             }
             buffer *buffer0 = api_make_buffer_request_connect(connection->id);
             connection->idLock.unlock();
             api_buffer_write(buffer0);
             log_info("New client: [%s:%d]", connection->ip, connection->port);
-            newClient->onRawMessageReceived = [newClient, &connection](const char *message, int length)
+            connection->socket->onRawMessageReceived = [&connection](const char *message, int length)
             {
                 if (length > MAX_MESSAGE_LENGTH) // Incoming message is too long, abort
-                    return newClient->Close();
-                connection->socket = newClient;
+                    return connection->socket->Close();
                 if (connection->isAccepted()) // Connection accepted
                 {
                     connection->idLock.lock();
@@ -315,7 +315,7 @@ namespace Api
                     if (d > 0)
                     {
                         connection->preMessageBufferLock.unlock();
-                        newClient->Send(std::format("preMessageBuffer overflow by {} bytes", d).c_str());
+                        connection->socket->Send(std::format("preMessageBuffer overflow by {} bytes", d).c_str());
                         return;
                     }
                     // We copy some arbitary bytes from a stranger on the internet into memory
@@ -329,7 +329,7 @@ namespace Api
                 }
             };
 
-            newClient->onSocketClosed = [&connection](int errorCode)
+            newSocket->onSocketClosed = [&connection](int errorCode)
             { connection_socket_close(connection, errorCode); };
         };
 

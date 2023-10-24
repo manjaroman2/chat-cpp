@@ -11,6 +11,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
   ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR})
 
 set(CHAT_GUI chat-gui)
+set(CHAT_SERVER chat-server)
 
 add_subdirectory(src)
 add_subdirectory(externals)
