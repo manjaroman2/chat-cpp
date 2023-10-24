@@ -2,9 +2,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <unistd.h>
-#include <fmt/core.h>
 #include <assert.h>
-
+#include <format>
+#include <utility>
+#include <magic_enum_all.hpp>
 /* ** API specification **
  *  The magic byte(s) encode
  *     1. The fundamental logic for API communication
@@ -38,7 +39,7 @@ namespace Api
     const int MAX_FULL_MESSAGE_SIZE = MAX_MESSAGE_LENGTH + PREFIX_SIZE;
     const int MAX_PRE_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH * 4;
 
-    enum Magic
+    enum Magic : MagicType
     {
         DISCONNECT = MAX_VAL(MagicType),
         CONNECT = DISCONNECT - 1,
@@ -51,7 +52,14 @@ namespace Api
         LOG_ERROR = LOG_INFO - 1,
 
         MAX_CONNECTIONS = LOG_ERROR - 1
+
     };
+
+    typedef struct
+    {
+        char *buf;
+        int len;
+    } buffer;
 
     void buffer_read_all(int fd, char *buf, int len)
     {
@@ -77,32 +85,33 @@ namespace Api
         }
     }
 
-    int buffer_write_all_len(int fd, char *buf, int len)
+    int buffer_write(int fd, buffer *buffer)
     {
-        int m = write(fd, buf, len);
-        int d = len - m;
+        int m = write(fd, buffer->buf, buffer->len);
+        int d = buffer->len - m;
         while (d > 0)
         {
-            buf += m;
-            m = write(fd, buf, d);
+            buffer->buf += m;
+            m = write(fd, buffer->buf, d);
             d -= m;
         }
-        free(buf);
-        return len;
+        free(buffer->buf);
+        free(buffer);
+        return buffer->len;
     }
-    int buffer_write_all(int fd, char *buf) { return buffer_write_all_len(fd, buf, strlen(buf)); }
 
     // Make buffer methods
-    char *make_buffer_special(MagicType mag, MagicType mag_as_message_length)
+    buffer *make_buffer_special(MagicType mag, MagicType mag_as_message_length)
     {
-        char *prefix_buffer = (char *)malloc(PREFIX_SIZE);
-        memcpy(prefix_buffer, &mag, MAGIC_TYPE_SIZE);
-        (*prefix_buffer) += MAGIC_TYPE_SIZE;
-        memcpy(prefix_buffer, &mag_as_message_length, MESSAGE_LENGTH_TYPE_SIZE);
+        buffer *prefix_buffer = (buffer *)malloc(sizeof(buffer));
+        prefix_buffer->len = PREFIX_SIZE;
+        prefix_buffer->buf = (char *)malloc(prefix_buffer->len);
+        memcpy(prefix_buffer->buf, &mag, MAGIC_TYPE_SIZE);
+        memcpy(prefix_buffer->buf + MAGIC_TYPE_SIZE, &mag_as_message_length, MESSAGE_LENGTH_TYPE_SIZE);
         return prefix_buffer;
     }
 
-    char *make_buffer(MagicType mag, const char *message_buffer, MessageLengthType message_length)
+    buffer *make_buffer(MagicType mag, const char *message_buffer, MessageLengthType message_length)
     {
         if (message_length > MAX_MESSAGE_LENGTH)
         {
@@ -111,41 +120,48 @@ namespace Api
             perror(text.c_str());
             exit(1);
         }
-        char *full_message_buffer = (char *)malloc(PREFIX_SIZE + message_length);
-        memcpy(full_message_buffer, &mag, MAGIC_TYPE_SIZE);
-        (*full_message_buffer) += MAGIC_TYPE_SIZE;
-        memcpy(full_message_buffer, &message_length, MESSAGE_LENGTH_TYPE_SIZE);
-        (*full_message_buffer) += MESSAGE_LENGTH_TYPE_SIZE;
-        memcpy(full_message_buffer, message_buffer, message_length);
+        buffer *full_message_buffer = (buffer *)malloc(sizeof(buffer));
+        full_message_buffer->len = PREFIX_SIZE + message_length;
+        full_message_buffer->buf = (char *)malloc(full_message_buffer->len);
+        memcpy(full_message_buffer->buf, &mag, MAGIC_TYPE_SIZE);
+        memcpy(full_message_buffer->buf + MAGIC_TYPE_SIZE, &message_length, MESSAGE_LENGTH_TYPE_SIZE);
+        memcpy(full_message_buffer->buf + MAGIC_TYPE_SIZE + MESSAGE_LENGTH_TYPE_SIZE, message_buffer, message_length);
         return full_message_buffer;
-    }
-    // Api out calls
-    int api_req_connect(MagicType cn)
-    { //
-        return buffer_write_all(
-            API_OUT_FILENO,
-            make_buffer_special(Magic::REQUEST_CONNECT, cn));
     }
 
     // Log calls
     template <typename... T>
-    inline int log(MagicType log, fmt::format_string<T...> fmt, T &&...args)
+    const int log(MagicType log, std::format_string<T...> fmt, T &&...args)
     {
-        char buf[MAX_MESSAGE_LENGTH];
-        int n = fmt::format_to_n(buf, MAX_MESSAGE_LENGTH, fmt, std::forward<T>(args)...).size;
+        std::string str;
+        auto it = std::back_inserter(str);
+        std::format_to_n_result r = std::format_to_n(it, MAX_MESSAGE_LENGTH, fmt, std::forward<T>(args)...);
+        int n = r.size;
         assert(n <= MAX_MESSAGE_LENGTH);
-        return buffer_write_all_len(API_OUT_FILENO, make_buffer(log, buf, n), n);
+        return buffer_write(LOG_FILENO, make_buffer(log, str.c_str(), n));
     }
     template <typename... T>
-    inline int log_info(fmt::format_string<T...> fmt, T &&...args) { return log(LOG_INFO, fmt, std::forward<T>(args)...); }
+    auto log_info(std::format_string<T...> fmt, T &&...args) { return log(LOG_INFO, fmt, std::forward<T>(args)...); }
     template <typename... T>
-    inline int log_error(fmt::format_string<T...> fmt, T &&...args) { return log(LOG_ERROR, fmt, std::forward<T>(args)...); }
+    auto log_error(std::format_string<T...> fmt, T &&...args) { return log(LOG_ERROR, fmt, std::forward<T>(args)...); }
 
-    // Api calls
-    inline int api(MagicType connId, const char *message, MessageLengthType length) { return buffer_write_all_len(API_OUT_FILENO, make_buffer(connId, message, length), length + PREFIX_SIZE); }
-    inline int api_message(MagicType connId, const char *message, MessageLengthType length) { return api(connId, message, length); }
+    // Make buffers for api
+    buffer *api_make_buffer_message(MagicType connId, const char *message, MessageLengthType length) { return make_buffer(connId, message, length); }
+    buffer *api_make_buffer_connect(MagicType connId) { return make_buffer_special(Magic::CONNECT, connId); }
+    buffer *api_make_buffer_disconnect(MagicType connId) { return make_buffer_special(Magic::DISCONNECT, connId); }
+    buffer *api_make_buffer_request_connect(MagicType connId) { return make_buffer_special(Magic::REQUEST_CONNECT, connId); }
 
-    inline int api_special(MagicType mag, MagicType mag_as_message_length) { return buffer_write_all_len(API_OUT_FILENO, make_buffer_special(mag, mag_as_message_length), PREFIX_SIZE); }
-    inline int api_create_connect(MagicType connId) { return api_special(Magic::CREATE_CONNECT, connId); }
+    inline int api_buffer_write(buffer *buffer) { return buffer_write(API_OUT_FILENO, buffer); }
+}
 
+template <>
+struct std::formatter<Api::Magic> : formatter<std::string_view>
+{
+    auto format(Api::Magic magic, std::format_context &ctx) const;
+};
+
+auto std::formatter<Api::Magic>::format(Api::Magic magic, std::format_context &ctx) const
+{
+    std::string_view name = magic_enum::enum_name(magic);
+    return std::formatter<std::string_view>::format(name, ctx);
 }

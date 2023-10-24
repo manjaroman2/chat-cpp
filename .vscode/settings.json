@@ -1,8 +1,6 @@
 {
     "cmake.debugConfig": {
-        "args": [
-            "3333"
-        ]
+        "args": ["3333"]
     },
     "cmake.loadCompileCommands": true,
     "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
@@ -82,9 +80,12 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "ranges": "cpp",
+        "complex": "cpp",
+        "typeindex": "cpp"
     },
     "search.exclude": {
-        "**/externals": true,
+        "**/externals": true
     }
 }

@@ -6,5 +6,4 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE magic_enum
     PRIVATE ncurses
     PRIVATE panel
-    PRIVATE fmt
 )
