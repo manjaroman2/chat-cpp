@@ -49,11 +49,11 @@ namespace Api
         }
 
         void createSocket();
+        void registerWith();
+        void destory();
+        void socketClose(int errorCode);
 
-        void sendMessage(char *messageBuffer, MessageLengthType messageLength)
-        {
-            buffer_send_socket_all(socket, messageBuffer, messageLength);
-        }
+        void socketSendMessage(char *messageBuffer, MessageLengthType messageLength) { buffer_send_socket_all(socket, messageBuffer, messageLength); }
 
         void setAccepted(bool newAccepted = true)
         {

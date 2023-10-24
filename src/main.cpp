@@ -10,80 +10,21 @@ namespace Api
     MagicType nextFreeConnection = 0; // = Amount of connections
     std::mutex connectionsLock;
 
-    void connection_destroy_by_id(MagicType connId)
-    { // This shits so easy when you use C style arrays
-        connectionsLock.lock();
-        if (connId < nextFreeConnection) // We valid
-        {
-            delete (&connections[connId]);
-            if (connId < nextFreeConnection - 1) // We are not in the last position
-            {                                    // Swap
-                connections[connId] = connections[nextFreeConnection - 1];
-            }
-            nextFreeConnection--;
-        }
-        connectionsLock.unlock();
-    }
-
-    void connection_destroy(Connection *connection)
+    void Connection::socketClose(int errorCode)
     {
-        connectionsLock.lock();
-        connection->idLock.lock();
-        MagicType connId = connection->id;
-        if (connId < nextFreeConnection) // We valid
+        idLock.lock();
+        log_info("Connection {} closed: {}", id, errorCode);
+        deletedLock.lock();
+        if (!deleted)
         {
-            connection->idLock.unlock();
-            delete (&connection);
-            if (connId < nextFreeConnection - 1) // We are not in the last position
-            {                                    // Swap
-                connections[connId] = connections[nextFreeConnection - 1];
-            }
-            nextFreeConnection--;
-        }
-        else
-            connection->idLock.unlock();
-        connectionsLock.unlock();
-    }
-
-    // Returns the connection id
-    void connnection_register(Connection *connection)
-    {
-        connectionsLock.lock();
-        if (nextFreeConnection < MAX_CONNECTIONS)
-        {
-            connection->idLock.lock();
-            connection->id = nextFreeConnection;
-            connections[nextFreeConnection] = connection;
-            nextFreeConnection++;
-            connection->idLock.unlock();
-        }
-        else
-            throw std::invalid_argument("Max connections");
-        connectionsLock.unlock();
-    }
-
-    Connection *connection_create(std::string ip, int port)
-    {
-        Connection *conn = new Connection(ip, port);
-        connnection_register(conn);
-        return conn;
-    }
-
-    void connection_socket_close(Connection *connection, int errorCode)
-    {
-        connection->idLock.lock();
-        log_info("Connection %d closed: %d", connection->id, errorCode);
-        connection->deletedLock.lock();
-        if (!connection->deleted)
-        {
-            connection->deleted = true;
-            connection->deletedLock.unlock();
+            deleted = true;
+            deletedLock.unlock();
             connectionsLock.lock();
-            if (connection->id < nextFreeConnection) // We valid
+            if (id < nextFreeConnection) // We valid
             {
-                MagicType connId = connection->id;
-                connection->idLock.unlock();
-                delete connection;
+                MagicType connId = id;
+                idLock.unlock();
+                delete this;
                 if (connId < nextFreeConnection - 1) // We are not in the last position
                 {                                    // Swap
                     connections[connId] = connections[nextFreeConnection - 1];
@@ -92,14 +33,14 @@ namespace Api
             }
             else
             {
-                connection->idLock.unlock();
+                idLock.unlock();
             }
             connectionsLock.unlock();
         }
         else
         {
-            connection->idLock.unlock();
-            connection->deletedLock.unlock();
+            idLock.unlock();
+            deletedLock.unlock();
         }
     }
 
@@ -135,6 +76,41 @@ namespace Api
             });
     }
 
+    void Connection::registerWith()
+    {
+        connectionsLock.lock();
+        if (nextFreeConnection < MAX_CONNECTIONS)
+        {
+            idLock.lock();
+            id = nextFreeConnection;
+            connections[nextFreeConnection] = this;
+            nextFreeConnection++;
+            idLock.unlock();
+        }
+        else
+            throw std::invalid_argument("Max connections");
+        connectionsLock.unlock();
+    }
+
+    void Connection::destory()
+    {
+        connectionsLock.lock();
+        idLock.lock();
+        MagicType connId = id;
+        if (connId < nextFreeConnection) // We valid
+        {
+            idLock.unlock();
+            delete this;
+            if (connId < nextFreeConnection - 1) // We are not in the last position
+            {                                    // Swap
+                connections[connId] = connections[nextFreeConnection - 1];
+            }
+            nextFreeConnection--;
+        }
+        else
+            idLock.unlock();
+        connectionsLock.unlock();
+    }
     // Start while(true) loop
     void serve()
     {
@@ -172,7 +148,7 @@ namespace Api
                 ip = strtok(messageBuffer, ":");
                 port = atoi(strtok(NULL, ":"));
                 connection = new Connection(ip, port);
-                connnection_register(connection);
+                connection->registerWith();
                 connection->createSocket();
 
                 // Send confirmation of CONNECT to client
@@ -256,7 +232,7 @@ namespace Api
                     log_error("  Connection {} is not accepted", connId);
                     break;
                 }
-                connection->sendMessage(messageBuffer, messageLength);
+                connection->socketSendMessage(messageBuffer, messageLength);
 
                 // TODO Confirm message sent back to client
                 break;
