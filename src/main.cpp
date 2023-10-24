@@ -111,7 +111,7 @@ namespace Api
             idLock.unlock();
         connectionsLock.unlock();
     }
-    // Start while(true) loop
+
     void serve()
     {
         char magicBuffer[MAGIC_TYPE_SIZE];
@@ -121,7 +121,7 @@ namespace Api
         MagicType magic, connId;
 
         Connection *connection = nullptr;
-        buffer *buffer;
+        // buffer *buffer;
 
         std::string ip;
         int port;
@@ -153,7 +153,7 @@ namespace Api
 
                 // Send confirmation of CONNECT to client
                 connection->idLock.lock();
-                buffer = api_make_buffer_connect(connection->id);
+                buffer *buffer = api_make_buffer_connect(connection->id);
                 connection->idLock.unlock();
                 api_buffer_write(buffer);
                 break;
@@ -178,7 +178,7 @@ namespace Api
                 connectionsLock.unlock();
 
                 // Send confirmation of DISCONNECT to client
-                buffer = api_make_buffer_disconnect(connId);
+                buffer *buffer = api_make_buffer_disconnect(connId);
                 api_buffer_write(buffer);
                 break;
             }
@@ -204,8 +204,8 @@ namespace Api
                 connection->accepted = true;
                 connection->acceptedLock.unlock();
                 // Process preMessageBuffer
-                connection->iteratePreMessageBufferChunks([&connId, &buffer](char *iter, MessageLengthType length) { //
-                    buffer = api_make_buffer_message(connId, iter, length);
+                connection->iteratePreMessageBufferChunks([&connId](char *iter, MessageLengthType length) { //
+                    buffer *buffer = api_make_buffer_message(connId, iter, length);
                     api_buffer_write(buffer);
                 });
                 break;
@@ -269,20 +269,21 @@ namespace Api
                 newSocket->Close();
                 return;
             }
-            buffer *buffer0 = api_make_buffer_request_connect(connection->id);
+            buffer *buffer;
+            buffer = api_make_buffer_request_connect(connection->id);
             connection->idLock.unlock();
-            api_buffer_write(buffer0);
+            api_buffer_write(buffer);
             log_info("New client: [%s:%d]", connection->ip, connection->port);
-            connection->socket->onRawMessageReceived = [&connection](const char *message, int length)
+            connection->socket->onRawMessageReceived = [&connection, &buffer](const char *message, int length)
             {
                 if (length > MAX_MESSAGE_LENGTH) // Incoming message is too long, abort
                     return connection->socket->Close();
                 if (connection->isAccepted()) // Connection accepted
                 {
                     connection->idLock.lock();
-                    buffer *buffer1 = api_make_buffer_message(connection->id, message, length);
+                    buffer = api_make_buffer_message(connection->id, message, length);
                     connection->idLock.unlock();
-                    api_buffer_write(buffer1);
+                    api_buffer_write(buffer);
                 }
                 else
                 { // Save messages to buffer while connection is not accepted
@@ -305,8 +306,8 @@ namespace Api
                 }
             };
 
-            newSocket->onSocketClosed = [&connection](int errorCode)
-            { connection_socket_close(connection, errorCode); };
+            connection->socket->onSocketClosed = [&connection](int errorCode)
+            { connection->socketClose(errorCode); };
         };
 
         // Bind the server to a port.
