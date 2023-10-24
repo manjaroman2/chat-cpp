@@ -6,6 +6,135 @@
 
 namespace Api
 {
+    Connection *connections[MAX_CONNECTIONS];
+    MagicType nextFreeConnection = 0; // = Amount of connections
+    std::mutex connectionsLock;
+
+    void connection_destroy_by_id(MagicType connId)
+    { // This shits so easy when you use C style arrays
+        connectionsLock.lock();
+        if (connId < nextFreeConnection) // We valid
+        {
+            delete (&connections[connId]);
+            if (connId < nextFreeConnection - 1) // We are not in the last position
+            {                                    // Swap
+                connections[connId] = connections[nextFreeConnection - 1];
+            }
+            nextFreeConnection--;
+        }
+        connectionsLock.unlock();
+    }
+
+    void connection_destroy(Connection *connection)
+    {
+        connectionsLock.lock();
+        connection->idLock.lock();
+        MagicType connId = connection->id;
+        if (connId < nextFreeConnection) // We valid
+        {
+            connection->idLock.unlock();
+            delete (&connection);
+            if (connId < nextFreeConnection - 1) // We are not in the last position
+            {                                    // Swap
+                connections[connId] = connections[nextFreeConnection - 1];
+            }
+            nextFreeConnection--;
+        }
+        else
+            connection->idLock.unlock();
+        connectionsLock.unlock();
+    }
+
+    // Returns the connection id
+    void connnection_register(Connection *connection)
+    {
+        connectionsLock.lock();
+        if (nextFreeConnection < MAX_CONNECTIONS)
+        {
+            connection->idLock.lock();
+            connection->id = nextFreeConnection;
+            connections[nextFreeConnection] = connection;
+            nextFreeConnection++;
+            connection->idLock.unlock();
+        }
+        else
+            throw std::invalid_argument("Max connections");
+        connectionsLock.unlock();
+    }
+
+    Connection *connection_create(std::string ip, int port)
+    {
+        Connection *conn = new Connection(ip, port);
+        connnection_register(conn);
+        return conn;
+    }
+
+    void connection_socket_close(Connection *connection, int errorCode)
+    {
+        connection->idLock.lock();
+        log_info("Connection %d closed: %d", connection->id, errorCode);
+        connection->deletedLock.lock();
+        if (!connection->deleted)
+        {
+            connection->deleted = true;
+            connection->deletedLock.unlock();
+            connectionsLock.lock();
+            if (connection->id < nextFreeConnection) // We valid
+            {
+                MagicType connId = connection->id;
+                connection->idLock.unlock();
+                delete connection;
+                if (connId < nextFreeConnection - 1) // We are not in the last position
+                {                                    // Swap
+                    connections[connId] = connections[nextFreeConnection - 1];
+                }
+                nextFreeConnection--;
+            }
+            else
+            {
+                connection->idLock.unlock();
+            }
+            connectionsLock.unlock();
+        }
+        else
+        {
+            connection->idLock.unlock();
+            connection->deletedLock.unlock();
+        }
+    }
+
+    void Connection::createSocket()
+    {
+        (*socket) = TCPSocket<>([](int errorCode, std::string errorMessage)
+                                { log_info("Socket creation error: %d : %s", errorCode, errorMessage); });
+
+        socket->onRawMessageReceived = [this](const char *message, int length)
+        {
+            idLock.lock();
+            buffer *buffer = api_make_buffer_message(id, message, length);
+            idLock.unlock();
+            api_buffer_write(buffer);
+        };
+
+        socket->onSocketClosed = [this](int errorCode)
+        { connection_socket_close(this, errorCode); };
+
+        socket->Connect(
+            ip, port, [this] { // TODO Send accept to api out
+                idLock.lock();
+                log_info("Connection %d accepted", id);
+                idLock.unlock();
+                this->setAccepted();
+            },
+            [this](int errorCode, std::string errorMessage)
+            {
+                // TODO Connection refused
+                // Maybe retry logic
+                this->setAccepted(false);
+                log_info("Connection failed: %d : %s", errorCode, errorMessage);
+            });
+    }
+
     // Start while(true) loop
     void start_api()
     {
@@ -203,47 +332,6 @@ namespace Api
 
             newClient->onSocketClosed = [&connection](int errorCode)
             { connection_socket_close(connection, errorCode); };
-            // newClient->onSocketClosed = [&connection](int errorCode)
-            // {
-            //     connection->idLock.lock();
-            //     connection->deletedLock.lock();
-            //     if (!connection->deleted)
-            //     {
-            //         connection->deleted = true;
-            //         connection->deletedLock.unlock();
-            //         connectionsLock.lock();
-            //         if (connection->id < nextFreeConnection) // We valid
-            //         {
-            //             MagicType connId = connection->id;
-            //             connection->idLock.unlock();
-            //             delete connection;
-            //             if (connId < nextFreeConnection - 1) // We are not in the last position
-            //             {                                    // Swap
-            //                 connections[connId] = connections[nextFreeConnection - 1];
-            //             }
-            //             nextFreeConnection--;
-            //         }
-            //         else
-            //         {
-            //             connection->idLock.unlock();
-            //         }
-            //         connectionsLock.unlock();
-            //     }
-            //     else
-            //     {
-            //         connection->idLock.unlock();
-            //         connection->deletedLock.unlock();
-            //     }
-            //     // log_info(
-            //     //     "Socket closed: %s:%d -> %d",
-            //     //     newClient->remoteAddress().c_str(),
-            //     //     newClient->remotePort(),
-            //     //     errorCode);
-
-            //     delete &connection;
-
-            //     // TODO
-            // };
         };
 
         // Bind the server to a port.
