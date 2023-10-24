@@ -19,8 +19,6 @@
  *  A message is all the bytes following the ML. It has to be encodable by the MLENGTH.
  *  For example if MLENGTH is unsigned short, then the MAX_MESSAGE_LENGTH is 65535.
  */
-namespace Api
-{
 #define LOG_FILENO STDOUT_FILENO
 #define API_IN_FILENO STDIN_FILENO
 #define API_OUT_FILENO STDOUT_FILENO
@@ -32,6 +30,8 @@ namespace Api
 
 #define MAX_VAL(TYPE) (TYPE) ~0
 
+namespace Api
+{
     const char MAGIC_TYPE_SIZE = sizeof(MagicType);
     const char MESSAGE_LENGTH_TYPE_SIZE = sizeof(MessageLengthType);
     const char PREFIX_SIZE = MAGIC_TYPE_SIZE + MESSAGE_LENGTH_TYPE_SIZE;
@@ -151,6 +151,104 @@ namespace Api
     buffer *api_make_buffer_request_connect(MagicType connId) { return make_buffer_special(Magic::REQUEST_CONNECT, connId); }
 
     inline int api_buffer_write(buffer *buffer) { return buffer_write(API_OUT_FILENO, buffer); }
+
+    class Connection
+    {
+    public: // Everything's is public as per recommendation by Terry Davis
+        MagicType id;
+        std::mutex idLock;
+        bool accepted = false;
+        std::mutex acceptedLock;
+        bool deleted = false;
+        std::mutex deletedLock;
+        std::string ip;
+        int port;
+        TCPSocket<> *socket;
+        std::array<char, MAX_PRE_MESSAGE_LENGTH> preMessageBuffer;
+        char *preMessageBufferFreeSpace = preMessageBuffer.begin();
+        std::mutex preMessageBufferLock;
+
+        Connection(std::string ip, int port) // Constructor overload??
+        {
+            this->ip = ip.c_str();
+            this->port = port;
+        }
+        Connection(TCPSocket<> *newSocket)
+        {
+            this->socket = newSocket;
+            this->ip = socket->remoteAddress().c_str();
+            this->port = socket->remotePort();
+        }
+
+        ~Connection()
+        {
+            deletedLock.lock();
+            if (!deleted)
+            {
+                deleted = true;
+                deletedLock.unlock();
+                socket->Close();
+            }
+            else
+                deletedLock.unlock();
+        }
+
+        void createSocket();
+        void registerWith();
+        void destory();
+        void socketHandleClose(int errorCode);
+
+        void socketSendMessage(char *messageBuffer, MessageLengthType messageLength) { buffer_send_socket_all(socket, messageBuffer, messageLength); }
+
+        void setAccepted(bool newAccepted = true)
+        {
+            acceptedLock.lock();
+            accepted = newAccepted;
+            acceptedLock.unlock();
+        }
+
+        bool isAccepted()
+        {
+            bool acceptedCopy;
+            acceptedLock.lock();
+            acceptedCopy = accepted;
+            acceptedLock.unlock();
+            return acceptedCopy;
+        }
+
+        template <typename Func>
+        void iteratePreMessageBufferChunks(Func func)
+        {
+            preMessageBufferLock.lock();
+            int m = ((uintptr_t)preMessageBufferFreeSpace) / MAX_MESSAGE_LENGTH;
+            char *iter = preMessageBuffer.begin();
+            for (int i = 0; i < m; i++)
+            {
+                iter += i * MAX_MESSAGE_LENGTH;
+                func(iter, MAX_MESSAGE_LENGTH);
+            }
+            int n = ((uintptr_t)preMessageBufferFreeSpace) - m * MAX_MESSAGE_LENGTH;
+            if (n > 0)
+            {
+                func(iter, n);
+            }
+            preMessageBufferLock.unlock();
+        }
+
+        void addToPreMessageBuffer(const char *buffer, int length)
+        {
+            preMessageBufferLock.lock();
+            int d = length - (preMessageBuffer.end() - preMessageBufferFreeSpace);
+            if (d > 0)
+            {
+                log_info("Message buffer overflow from %s:%d by %d bytes", ip, port, d);
+                return;
+            }
+            memcpy(preMessageBufferFreeSpace, buffer, length);
+            preMessageBufferFreeSpace += length;
+            preMessageBufferLock.unlock();
+        }
+    };
 }
 
 template <>

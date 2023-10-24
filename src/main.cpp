@@ -10,7 +10,9 @@ namespace Api
     MagicType nextFreeConnection = 0; // = Amount of connections
     std::mutex connectionsLock;
 
-    void Connection::socketClose(int errorCode)
+    // C Programmers would say this is bad but they can suck my balls
+
+    void Connection::socketHandleClose(int errorCode)
     {
         idLock.lock();
         log_info("Connection {} closed: {}", id, errorCode);
@@ -58,7 +60,7 @@ namespace Api
         };
 
         socket->onSocketClosed = [this](int errorCode)
-        { connection_socket_close(this, errorCode); };
+        { this->socketHandleClose(errorCode); };
 
         socket->Connect(
             ip, port, [this] { // TODO Send accept to api out
@@ -307,7 +309,7 @@ namespace Api
             };
 
             connection->socket->onSocketClosed = [&connection](int errorCode)
-            { connection->socketClose(errorCode); };
+            { connection->socketHandleClose(errorCode); };
         };
 
         // Bind the server to a port.

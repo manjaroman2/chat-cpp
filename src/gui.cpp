@@ -1,5 +1,5 @@
 #include "gui.hpp"
-#include "imtui.h"
+#include "imtui/imtui.h"
 
 int main(int argc, char **argv)
 {

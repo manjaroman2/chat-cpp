@@ -1,4 +1,3 @@
-
 add_executable(${CHAT_SERVER} main.cpp main.hpp api.hpp)
 target_link_libraries(${CHAT_SERVER} 
     PRIVATE pthread
