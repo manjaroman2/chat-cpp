@@ -7,8 +7,6 @@
 // #include <stdlib.h>
 // #include <stdio.h>
 #include <unistd.h>
-#include <fmt/core.h>
-#include <magic_enum.hpp>
 
 #ifndef CTRL
 #define CTRL(x) ((x) & 037)
