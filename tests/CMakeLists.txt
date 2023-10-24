@@ -1,0 +1,1 @@
+add_test(NAME Test1 COMMAND ${PROJECT_NAME} 3333)

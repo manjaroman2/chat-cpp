@@ -1,0 +1,7 @@
+# externals/
+build/
+env/
+other_stuff/
+*.pem
+!client/*.cpp
+!CMakeLists.txt 
