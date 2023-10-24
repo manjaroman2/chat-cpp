@@ -136,7 +136,7 @@ namespace Api
     }
 
     // Start while(true) loop
-    void start_api()
+    void serve()
     {
         char magicBuffer[MAGIC_TYPE_SIZE];
         char messageLengthBuffer[MESSAGE_LENGTH_TYPE_SIZE];
@@ -188,7 +188,7 @@ namespace Api
                 if (connId > nextFreeConnection - 1) // Is valid Connection
                 {
                     connectionsLock.unlock();
-                    log_error("  Connection %d is invalid", connId);
+                    log_error("  Connection {} is invalid", connId);
                     break;
                 }
                 connection = connections[connId];
@@ -212,7 +212,7 @@ namespace Api
                 if (connId > nextFreeConnection - 1) // Is valid Connection
                 {
                     connectionsLock.unlock();
-                    log_error("  Connection %d is invalid", connId);
+                    log_error("  Connection {} is invalid", connId);
                     break;
                 }
                 connection = connections[connId];
@@ -221,7 +221,7 @@ namespace Api
                 if (connection->accepted) // Is not already accepted
                 {
                     connection->acceptedLock.unlock();
-                    log_error("  Connection %d was already accepted", connId);
+                    log_error("  Connection {} was already accepted", connId);
                     break;
                 }
                 connection->accepted = true;
@@ -245,14 +245,14 @@ namespace Api
                 if (connId > nextFreeConnection - 1)
                 {
                     connectionsLock.unlock();
-                    log_error("  Connection %d is invalid", connId);
+                    log_error("  Connection {} is invalid", connId);
                     break;
                 }
                 connection = connections[connId];
                 connectionsLock.unlock();
                 if (connection->isAccepted())
                 {
-                    log_error("  Connection %d is not accepted", connId);
+                    log_error("  Connection {} is not accepted", connId);
                     break;
                 }
                 connection->sendMessage(messageBuffer, messageLength);
@@ -316,7 +316,6 @@ namespace Api
                     {
                         connection->preMessageBufferLock.unlock();
                         newClient->Send(std::format("preMessageBuffer overflow by {} bytes", d).c_str());
-                        // log_info("Message buffer overflow from %s:%d by %d bytes", connection->ip, connection->port, d);
                         return;
                     }
                     // We copy some arbitary bytes from a stranger on the internet into memory
@@ -336,15 +335,15 @@ namespace Api
 
         // Bind the server to a port.
         tcpServer.Bind(listen_port, [](int errorCode, std::string errorMessage)
-                       { log_info("Binding failed: %d : %s", errorCode, errorMessage); });
+                       { log_info("Binding failed: {} : {}", errorCode, errorMessage); });
 
         // Start Listening the server.
         tcpServer.Listen([](int errorCode, std::string errorMessage)
-                         { log_info("Listening failed: %d : %s", errorCode, errorMessage); });
+                         { log_info("Listening failed: {} : {}", errorCode, errorMessage); });
 
-        log_info("TCP Server started on port %d", listen_port);
+        log_info("TCP Server started on port {}", listen_port);
 
-        start_api();
+        serve();
 
         // Close the server before exiting the program.
         tcpServer.Close();
