@@ -10,9 +10,10 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
   ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR})
 
+set(CHAT_GUI chat-gui)
+
 add_subdirectory(src)
 add_subdirectory(externals)
-
 add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 
 include(CTest)

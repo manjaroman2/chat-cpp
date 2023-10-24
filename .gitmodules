@@ -7,3 +7,6 @@
 [submodule "externals/async-sockets-cpp"]
 	path = externals/async-sockets-cpp
 	url = ghmj2:eminfedar/async-sockets-cpp.git
+[submodule "externals/imtui"]
+	path = externals/imtui
+	url = ghmj2:ggerganov/imtui.git
