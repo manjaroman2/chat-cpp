@@ -12,8 +12,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
 
 add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 
-set(CHAT_GUI chat-gui)
-set(CHAT_SERVER chat-server)
+set(ETA_TUI eta)
+set(DELTA_SERVER delta)
 
 add_subdirectory(externals)
 add_subdirectory(src)

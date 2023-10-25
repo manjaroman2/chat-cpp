@@ -1,8 +1,8 @@
-#include "main.hpp"
+#include "delta.hpp"
 
-namespace Api
+namespace Delta
 {
-    Connection *connections[MAX_CONNECTIONS];
+    Connection *connections[Api::MAX_CONNECTIONS];
     MagicType nextFreeConnection = 0; // = Amount of connections
     std::mutex connectionsLock;
 
@@ -11,7 +11,7 @@ namespace Api
     void Connection::socketHandleClose(int errorCode)
     {
         idLock.lock();
-        log_info("Connection {} closed: {}", id, errorCode);
+        Api::log_info("Connection {} closed: {}", id, errorCode);
         deletedLock.lock();
         if (!deleted)
         {
@@ -45,14 +45,14 @@ namespace Api
     void Connection::createSocket()
     {
         (*socket) = TCPSocket<>([](int errorCode, std::string errorMessage)
-                                { log_info("Socket creation error: %d : %s", errorCode, errorMessage); });
+                                { Api::log_info("Socket creation error: %d : %s", errorCode, errorMessage); });
 
         socket->onRawMessageReceived = [this](const char *message, int length)
         {
             idLock.lock();
-            buffer *buffer = api_make_buffer_message(id, message, length);
+            Api::buffer *buffer = Api::api_make_buffer_message(id, message, length);
             idLock.unlock();
-            api_buffer_write(buffer);
+            Api::api_buffer_write(buffer);
         };
 
         socket->onSocketClosed = [this](int errorCode)
@@ -61,7 +61,7 @@ namespace Api
         socket->Connect(
             ip, port, [this] { // TODO Send accept to api out
                 idLock.lock();
-                log_info("Connection %d accepted", id);
+                Api::log_info("Connection %d accepted", id);
                 idLock.unlock();
                 this->setAccepted();
             },
@@ -70,14 +70,14 @@ namespace Api
                 // TODO Connection refused
                 // Maybe retry logic
                 this->setAccepted(false);
-                log_info("Connection failed: %d : %s", errorCode, errorMessage);
+                Api::log_info("Connection failed: %d : %s", errorCode, errorMessage);
             });
     }
 
     void Connection::registerWith()
     {
         connectionsLock.lock();
-        if (nextFreeConnection < MAX_CONNECTIONS)
+        if (nextFreeConnection < Api::MAX_CONNECTIONS)
         {
             idLock.lock();
             id = nextFreeConnection;
@@ -112,9 +112,9 @@ namespace Api
 
     void serve()
     {
-        char magicBuffer[MAGIC_TYPE_SIZE];
-        char messageLengthBuffer[MESSAGE_LENGTH_TYPE_SIZE];
-        char messageBuffer[MAX_MESSAGE_LENGTH];
+        char magicBuffer[Api::MAGIC_TYPE_SIZE];
+        char messageLengthBuffer[Api::MESSAGE_LENGTH_TYPE_SIZE];
+        char messageBuffer[Api::MAX_MESSAGE_LENGTH];
         MessageLengthType messageLength;
         MagicType magic, connId;
 
@@ -125,21 +125,21 @@ namespace Api
         int port;
         while (true)
         {
-            buffer_read_all(STDIN_FILENO, magicBuffer, MAGIC_TYPE_SIZE);
-            buffer_read_all(STDIN_FILENO, messageLengthBuffer, MESSAGE_LENGTH_TYPE_SIZE);
+            Api::buffer_read_all(STDIN_FILENO, magicBuffer, Api::MAGIC_TYPE_SIZE);
+            Api::buffer_read_all(STDIN_FILENO, messageLengthBuffer, Api::MESSAGE_LENGTH_TYPE_SIZE);
             // Convert 2 Bytes to ushort
-            memcpy(&messageLength, &messageLengthBuffer, MESSAGE_LENGTH_TYPE_SIZE);
-            buffer_read_all(STDIN_FILENO, messageBuffer, messageLength);
-            memcpy(&magic, magicBuffer, MAGIC_TYPE_SIZE);
+            memcpy(&messageLength, &messageLengthBuffer, Api::MESSAGE_LENGTH_TYPE_SIZE);
+            Api::buffer_read_all(STDIN_FILENO, messageBuffer, messageLength);
+            memcpy(&magic, magicBuffer, Api::MAGIC_TYPE_SIZE);
             switch (magic)
             {
-            case Magic::CONNECT: // Client requests CONNECT to socket
+            case Api::Magic::CONNECT: // Client requests CONNECT to socket
             {
                 connectionsLock.lock();
-                if (nextFreeConnection == MAX_CONNECTIONS)
+                if (nextFreeConnection == Api::MAX_CONNECTIONS)
                 {
                     connectionsLock.unlock();
-                    log_error("  Connection limit reached {}", MAX_CONNECTIONS);
+                    Api::log_error("  Connection limit reached {}", Api::MAX_CONNECTIONS);
                     break;
                 }
                 connectionsLock.unlock();
@@ -151,19 +151,19 @@ namespace Api
 
                 // Send confirmation of CONNECT to client
                 connection->idLock.lock();
-                buffer *buffer = api_make_buffer_connect(connection->id);
+                Api::buffer *buffer = Api::api_make_buffer_connect(connection->id);
                 connection->idLock.unlock();
-                api_buffer_write(buffer);
+                Api::api_buffer_write(buffer);
                 break;
             }
-            case Magic::DISCONNECT: // Client requests DISCONNECT from socket
+            case Api::Magic::DISCONNECT: // Client requests DISCONNECT from socket
             {
                 connId = (MagicType)messageLength;
                 connectionsLock.lock();
                 if (connId > nextFreeConnection - 1) // Is valid Connection
                 {
                     connectionsLock.unlock();
-                    log_error("  Connection {} is invalid", connId);
+                    Api::log_error("  Connection {} is invalid", connId);
                     break;
                 }
                 connection = connections[connId];
@@ -176,18 +176,18 @@ namespace Api
                 connectionsLock.unlock();
 
                 // Send confirmation of DISCONNECT to client
-                buffer *buffer = api_make_buffer_disconnect(connId);
+                Api::buffer *buffer = Api::api_make_buffer_disconnect(connId);
                 api_buffer_write(buffer);
                 break;
             }
-            case Magic::ACCEPT_CONNECT: // Client wants to ACCEPT_CONNECT an incoming connection
+            case Api::Magic::ACCEPT_CONNECT: // Client wants to ACCEPT_CONNECT an incoming connection
             {
                 connId = (MagicType)messageLength;
                 connectionsLock.lock();
                 if (connId > nextFreeConnection - 1) // Is valid Connection
                 {
                     connectionsLock.unlock();
-                    log_error("  Connection {} is invalid", connId);
+                    Api::log_error("  Connection {} is invalid", connId);
                     break;
                 }
                 connection = connections[connId];
@@ -196,19 +196,19 @@ namespace Api
                 if (connection->accepted) // Is not already accepted
                 {
                     connection->acceptedLock.unlock();
-                    log_error("  Connection {} was already accepted", connId);
+                    Api::log_error("  Connection {} was already accepted", connId);
                     break;
                 }
                 connection->accepted = true;
                 connection->acceptedLock.unlock();
                 // Process preMessageBuffer
                 connection->iteratePreMessageBufferChunks([&connId](char *iter, MessageLengthType length) { //
-                    buffer *buffer = api_make_buffer_message(connId, iter, length);
-                    api_buffer_write(buffer);
+                    Api::buffer *buffer = Api::api_make_buffer_message(connId, iter, length);
+                    Api::api_buffer_write(buffer);
                 });
                 break;
             }
-            case Magic::LOG_INFO || Magic::LOG_ERROR:
+            case Api::Magic::LOG_INFO || Api::Magic::LOG_ERROR:
             {
                 // Client should not send log messages
                 break;
@@ -220,14 +220,14 @@ namespace Api
                 if (connId > nextFreeConnection - 1)
                 {
                     connectionsLock.unlock();
-                    log_error("  Connection {} is invalid", connId);
+                    Api::log_error("  Connection {} is invalid", connId);
                     break;
                 }
                 connection = connections[connId];
                 connectionsLock.unlock();
                 if (connection->isAccepted())
                 {
-                    log_error("  Connection {} is not accepted", connId);
+                    Api::log_error("  Connection {} is not accepted", connId);
                     break;
                 }
                 connection->socketSendMessage(messageBuffer, messageLength);
@@ -252,7 +252,7 @@ namespace Api
         tcpServer.onNewConnection = [](TCPSocket<> *newSocket)
         {
             Connection *connection = nullptr;
-            if (nextFreeConnection < MAX_CONNECTIONS)
+            if (nextFreeConnection < Api::MAX_CONNECTIONS)
             {
                 connection = new Connection(newSocket);
                 connection->idLock.lock();
@@ -267,19 +267,19 @@ namespace Api
                 newSocket->Close();
                 return;
             }
-            buffer *buffer;
-            buffer = api_make_buffer_request_connect(connection->id);
+            Api::buffer *buffer;
+            buffer = Api::api_make_buffer_request_connect(connection->id);
             connection->idLock.unlock();
             api_buffer_write(buffer);
-            log_info("New client: [%s:%d]", connection->ip, connection->port);
+            Api::log_info("New client: [%s:%d]", connection->ip, connection->port);
             connection->socket->onRawMessageReceived = [&connection, &buffer](const char *message, int length)
             {
-                if (length > MAX_MESSAGE_LENGTH) // Incoming message is too long, abort
+                if (length > Api::MAX_MESSAGE_LENGTH) // Incoming message is too long, abort
                     return connection->socket->Close();
                 if (connection->isAccepted()) // Connection accepted
                 {
                     connection->idLock.lock();
-                    buffer = api_make_buffer_message(connection->id, message, length);
+                    buffer = Api::api_make_buffer_message(connection->id, message, length);
                     connection->idLock.unlock();
                     api_buffer_write(buffer);
                 }
@@ -299,8 +299,8 @@ namespace Api
                     memcpy(connection->preMessageBufferFreeSpace, message, length);
                     connection->preMessageBufferFreeSpace += length;
                     connection->preMessageBufferLock.unlock();
-                    log_info("Message from the Client %s:%d with %d bytes into preMessageBuffer",
-                             connection->ip, connection->port, length);
+                    Api::log_info("Message from the Client %s:%d with %d bytes into preMessageBuffer",
+                                  connection->ip, connection->port, length);
                 }
             };
 
@@ -310,13 +310,13 @@ namespace Api
 
         // Bind the server to a port.
         tcpServer.Bind(listen_port, [](int errorCode, std::string errorMessage)
-                       { log_info("Binding failed: {} : {}", errorCode, errorMessage); });
+                       { Api::log_info("Binding failed: {} : {}", errorCode, errorMessage); });
 
         // Start Listening the server.
         tcpServer.Listen([](int errorCode, std::string errorMessage)
-                         { log_info("Listening failed: {} : {}", errorCode, errorMessage); });
+                         { Api::log_info("Listening failed: {} : {}", errorCode, errorMessage); });
 
-        log_info("TCP Server started on port {}", listen_port);
+        Api::log_info("TCP Server started on port {}", listen_port);
 
         serve();
 
@@ -330,5 +330,5 @@ namespace Api
 
 int main(int argc, char **argv)
 {
-    return Api::main(argc, argv);
+    return Delta::main(argc, argv);
 }
