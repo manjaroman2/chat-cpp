@@ -1,4 +1,4 @@
-#include "tcpsocket.hpp"
+#include <async-sockets/tcpsocket.hpp>
 #include <stdio.h>
 #include <stdarg.h>
 #include <unistd.h>
@@ -154,7 +154,7 @@ namespace Api
 
     class Connection
     {
-    public: // Everything's is public as per recommendation by Terry Davis
+    public: // Everything is public as per recommendation by Terry Davis
         MagicType id;
         std::mutex idLock;
         bool accepted = false;
@@ -168,7 +168,7 @@ namespace Api
         char *preMessageBufferFreeSpace = preMessageBuffer.begin();
         std::mutex preMessageBufferLock;
 
-        Connection(std::string ip, int port) // Constructor overload??
+        Connection(std::string ip, int port) // Constructor overload bad??
         {
             this->ip = ip.c_str();
             this->port = port;

@@ -1,7 +1,12 @@
+#pragma once
+
 #include "api.hpp"
-#include "tcpsocket.hpp"
+#include <async-sockets/tcpsocket.hpp>
+#include <async-sockets/tcpserver.hpp>
 #include <mutex>
-// #include <functional>
+#include <algorithm>
+#include <ranges>
+#include <format>
 #include <stdint.h>
 
 namespace Api

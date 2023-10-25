@@ -10,14 +10,13 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
   ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR})
 
+add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
+
 set(CHAT_GUI chat-gui)
 set(CHAT_SERVER chat-server)
 
-set(IMTUI_SUPPORT_NCURSES ON)
-
 add_subdirectory(externals)
 add_subdirectory(src)
-add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 
 include(CTest)
 enable_testing()
