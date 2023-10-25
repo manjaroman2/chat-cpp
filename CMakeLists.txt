@@ -13,8 +13,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
 set(CHAT_GUI chat-gui)
 set(CHAT_SERVER chat-server)
 
-add_subdirectory(src)
+set(IMTUI_SUPPORT_NCURSES ON)
+
 add_subdirectory(externals)
+add_subdirectory(src)
 add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 
 include(CTest)
