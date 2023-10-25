@@ -3,6 +3,7 @@
 #include <iostream>
 #include <pthread.h>
 #include "eta.hpp"
+#include "api.hpp"
 
 namespace Eta
 {
